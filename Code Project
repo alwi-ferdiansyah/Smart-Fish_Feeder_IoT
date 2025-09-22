@@ -1,0 +1,80 @@
+/*
+  Title   : Smart Fish Feeder (Automatic Fish Feeding System)
+  Author  : Mohammad Alwi Ferdiansyah Alfarizi
+  Description:
+    This program uses ESP32 + Servo motor to feed fish automatically 
+    based on a fixed schedule (morning & afternoon). 
+    The time is synchronized with the NTP server via WiFi connection.
+*/
+
+#include <WiFi.h>
+#include <ESP32Servo.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+
+// WiFi credentials
+const char* ssid     = "YOUR_WIFI_NAME";
+const char* password = "YOUR_WIFI_PASSWORD";
+
+// Servo configuration
+Servo feederServo;
+int servoPin = 13;     // ESP32 pin connected to servo
+int feedAngle = 90;    // angle when feeding
+int restAngle = 0;     // default angle
+
+// Time (NTP)
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org", 7 * 3600, 60000); // GMT+7 (Jakarta/WIB)
+
+// Feeding schedule (hours)
+int feedHours[] = {7, 17};   // feed at 07:00 and 17:00
+bool hasFed[24] = {false};   // status per hour to avoid multiple feeds
+
+void setup() {
+  Serial.begin(115200);
+
+  // Connect to WiFi
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected!");
+
+  // Initialize Servo
+  feederServo.attach(servoPin);
+  feederServo.write(restAngle);
+
+  // Initialize Time
+  timeClient.begin();
+}
+
+void loop() {
+  timeClient.update();
+
+  int currentHour = timeClient.getHours();
+  int currentMinute = timeClient.getMinutes();
+
+  // Check feeding schedule
+  for (int i = 0; i < sizeof(feedHours) / sizeof(feedHours[0]); i++) {
+    if (currentHour == feedHours[i] && currentMinute == 0 && !hasFed[currentHour]) {
+      giveFood();
+      hasFed[currentHour] = true; // mark as fed
+    }
+  }
+
+  // Reset feeding status every hour
+  if (currentMinute == 59) {
+    hasFed[currentHour] = false;
+  }
+
+  delay(1000);
+}
+
+void giveFood() {
+  Serial.println("🐟 Feeding fish...");
+  feederServo.write(feedAngle);  // rotate servo to feed
+  delay(2000);                   // wait for 2 seconds
+  feederServo.write(restAngle);  // return to rest position
+}
